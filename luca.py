@@ -1,1 +1,1 @@
-#everything luca does is awsomeee
+print("everything luca does is awsomeeeg")
