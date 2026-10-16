@@ -1,1 +1,4 @@
-print("this is only for me")
+from state_machine import StateMachine
+
+sm = StateMachine()
+

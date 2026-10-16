@@ -8,3 +8,11 @@ class movement(input):
         return
     def moving(self):
         return
+
+class States(object):
+
+    WAITING = "waiting"
+    MOVING = "moving"
+    STOP = "stop"
+    MOVING2 = "moving2"
+    
