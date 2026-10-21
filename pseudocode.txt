@@ -1,0 +1,118 @@
+CLASS Butterworth
+    ATTRIBUTES: fs, fc, order, sos, z
+
+    CONSTRUCTOR(fs = 2, fc = 2, order = 4):
+        STORE fs, fc, order
+        Wc = 2 * fs * TAN(PI * fc / fs)              // pre-warped analog cutoff
+        sos = EMPTY LIST
+
+        // One second-order section per conjugate pole pair
+        FOR i FROM 0 TO (order DIV 2) - 1:
+            theta = (2*i + 1) * PI / (2 * order)
+            p     = -SIN(theta) + j * COS(theta)     // low-pass prototype pole
+            p_hp  = Wc / p                           // low-pass -> high-pass
+            zp    = (2*fs + p_hp) / (2*fs - p_hp)    // bilinear transform
+            a1    = -2 * REAL(zp)
+            a2    = ABS(zp)^2
+            g     = (1 - a1 + a2) / 4                // unity gain at Nyquist
+            APPEND [g, -2*g, g, 1.0, a1, a2] TO sos
+
+        // Odd order: one extra first-order section
+        IF order IS ODD:
+            zp = (2*fs - Wc) / (2*fs + Wc)
+            a1 = -zp
+            g  = (1 - a1) / 2
+            APPEND [g, -g, 0.0, 1.0, a1, 0.0] TO sos
+
+        this.sos = sos AS ARRAY
+        this.z   = ZEROS(number_of_rows(sos), 2)     // filter memory
+
+    METHOD butterworth_processing(x):
+        FOR EACH section i IN sos, WITH (b0, b1, b2, _, a1, a2):
+            y      = b0*x + z[i][0]
+            z[i][0] = b1*x - a1*y + z[i][1]
+            z[i][1] = b2*x - a2*y
+            x = y                                    // output feeds next section
+        RETURN x
+
+
+
+
+
+CLASS Rectify
+    METHOD rectification_processing(x):
+        RETURN ABS(x)
+
+
+
+
+
+CLASS MovingAverageFilter
+    ATTRIBUTES: windowlen, buffer, index, sum
+
+    CONSTRUCTOR(fs, window = 250):                   // window in ms
+        windowlen = MAX(1, ROUND(window * fs / 1000))
+        buffer    = ZEROS(windowlen)
+        index     = 0
+        sum       = 0
+
+    METHOD movingaverage_processing(x):
+        sum = sum + x - buffer[index]                // add newest, drop oldest
+        buffer[index] = x
+        index = (index + 1) MOD windowlen
+        RETURN sum / windowlen
+
+
+
+
+
+CLASS Normalizer
+    ATTRIBUTES: percentage, rest, max, eps
+
+    CONSTRUCTOR(percentage = 95):
+        this.percentage = percentage
+        rest = 0
+        max  = NULL                                  // not calibrated yet
+        eps  = 1e-6
+
+    METHOD calibrate_rest(rest_signal):
+        rest = MEAN(rest_signal)
+
+    METHOD calibrate_max(active_signal):
+        max = PERCENTILE(active_signal, percentage)
+
+    METHOD normalizer_processing(x):
+        n = (x - rest) / (max - rest + eps)
+        RETURN CLAMP(n, 0, 1)                        // keep in [0, 1]
+
+
+
+
+
+CLASS Windower
+    ATTRIBUTES: feature, windowlen, hoplen, buffer, index, filled, count
+
+    CONSTRUCTOR(fs, window = 200, overlap = 0.5, feature = "mean"):
+        this.feature = feature
+        windowlen = MAX(1, ROUND(window * fs / 1000))
+        hoplen    = MAX(1, ROUND(windowlen * (1 - overlap)))
+        buffer    = ZEROS(windowlen)
+        index     = 0                                // next write position
+        filled    = 0                                // valid samples in buffer
+        count     = 0                                // samples since last window
+
+    METHOD update(x):
+        buffer[index] = x
+        index  = (index + 1) MOD windowlen
+        filled = MIN(filled + 1, windowlen)
+        count  = count + 1
+
+        IF filled == windowlen AND count >= hoplen:
+            count = 0
+            RETURN compute_feature()
+        RETURN NULL                                  // no window ready
+
+    METHOD compute_feature():
+        IF feature == "rms":
+            RETURN SQRT(MEAN(buffer^2))
+        RETURN MEAN(buffer)
