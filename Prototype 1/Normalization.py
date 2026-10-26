@@ -3,8 +3,8 @@ import numpy as np
 class Normalizer:
     def __init__(self, percentage=95):
         self.percentage = percentage
-        self.rest = 0.0        
-        self.max = None       
+        self.rest = 0.0
+        self.max = None          
         self.eps = 1e-6
 
     def calibrate_rest(self, rest):
@@ -14,5 +14,7 @@ class Normalizer:
         self.max = float(np.percentile(active, self.percentage))
 
     def normalizer_processing(self, x):
+        if self.max is None:
+            raise RuntimeError("Calibrate first: call calibrate_max()")
         normalize = (x - self.rest) / (self.max - self.rest + self.eps)
-        return min(max(normalize, 0.0), 1.0)   
+        return min(max(normalize, 0.0), 1.0)

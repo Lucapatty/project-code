@@ -28,7 +28,7 @@ class Butterworth:
         self.sos = np.array(sos)
         self.z = np.zeros((self.sos.shape[0], 2))
 
-    def processing(self, x):
+    def butterworth_processing(self, x):
         for i, (b0, b1, b2, _, a1, a2) in enumerate (self.sos):
             y = b0*x + self.z[i, 0]
             self.z[i, 0] = (b1*x) - (a1*y) + self.z[i, 1]
